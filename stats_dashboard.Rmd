@@ -1,36 +1,145 @@
 ---
-title: "Untitled"
+title: "Mortality"
+runtime: shiny
 output: 
   flexdashboard::flex_dashboard:
+    theme: lumen
     orientation: columns
     vertical_layout: fill
+    
 ---
 
 ```{r setup, include=FALSE}
 library(flexdashboard)
+library(tidyr)
+library(southafricastats)
+library(dplyr)
+library(leaflet)
+library(ggplot2)
+library(DT)
+
+
+totals <- population_zaf %>% 
+  filter(year == 2013) %>%
+  select(province, total)
+
+compare_provinces <- mortality_zaf %>%
+  left_join(totals) %>%
+  mutate(rate = deaths/total*1e3) %>%
+  group_by (province, indicator) %>%
+  summarise(rate = mean(rate, na.rm = TRUE)) %>%
+  ungroup %>%
+  left_join(totals) %>%
+  spread(indicator, rate)
+
+mortality_zaf <- mortality_zaf %>%
+  filter(indicator != c("All causes"))
+
 ```
 
-Column {data-width=650}
------------------------------------------------------------------------
+Column {.sidebar}
+=====================================================================
 
-### Chart A
+This app explores mortality data from the 
+[South Africa Data Portal](http://southafrica.opendataforafrica.org/).
+
+Use the input below to select a cause of death to explore.
+
+```{r}
+selectInput(inputId = "indicator",
+            label = "Chose a cause of death:",
+            choices = unique(mortality_zaf$indicator),
+            selected = "Tuberculosis (A15-A19)")
+
+
+```
+
+Map {data-icon="fa-map-marker"}
+====================================================================
+
+### Which provinces have a higher mortality rate from the selected cause of death?
 
 ```{r}
 
+selected_df <- reactive({
+    subset_df <- compare_provinces[, c(1,
+                                       which(colnames(compare_provinces) == input$indicator))]
+    colnames(subset_df) <- c("province", "indicator")
+    population_zaf %>%
+        filter(year == 2013) %>%
+        left_join(subset_df, by = "province") %>%
+        mutate(indicator = indicator / sum(indicator))
+})
+
+
+renderLeaflet({
+    leaflet(selected_df()) %>%
+        addProviderTiles("CartoDB.Positron") %>%
+        addCircles(lng = ~longitude, 
+                   lat = ~latitude, 
+                   weight = 2.5,
+                   radius = ~sqrt(indicator) * 3e5,
+                   popup = ~province,
+                   color = "magenta")
+})
 ```
 
-Column {data-width=350}
------------------------------------------------------------------------
+Comparing provinces {data-icon="fa-list"}
+====================================================================
 
-### Chart B
+### How does the selected mortality rate compare to the overall mortality rate?
 
 ```{r}
+scatterplot_df <- reactive({
+    scatterplot_df <- compare_provinces[, c(1:2, 
+                                       which(colnames(compare_provinces) == "All causes"),
+                                       which(colnames(compare_provinces) == input$indicator))]
+    colnames(scatterplot_df) <- c("province", "total", "x", "y")
+    scatterplot_df
+})
 
+renderPlot({
+  ggplot(scatterplot_df(),
+       aes(x,y,
+           label = province)) +
+  geom_point(aes(size = total),alpha = 0.8, color = "midnightblue") +
+  geom_text(vjust = 2.5) +
+  theme_minimal() +
+    labs(x = "All causes",
+         y = input$indicator)
+})
 ```
 
-### Chart C
+Changes in time {data-icon="fa-area-chart"}
+====================================================================
+
+### How have the number of deaths changed in time?
 
 ```{r}
-
+renderPlot({
+    mortality_zaf %>%
+        filter(indicator == input$indicator) %>%
+        ggplot(aes(year, deaths, color = province)) +
+        geom_line(alpha = 0.8, size = 1.5) +
+        theme_minimal(base_size = 18) +
+        labs(x = NULL, y = "Number of deaths per year")
+})
 ```
+
+Table {data-icon="fa-table"}
+====================================================================
+
+### Explore the data as reported by the South Africa Data Portal
+
+```{r}
+renderDataTable({
+     datatable(mortality_zaf %>%
+        filter(indicator == input$indicator))
+    },
+    options = list(pageLength = 10)
+    )
+```
+
+
+
 
