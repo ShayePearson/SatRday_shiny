@@ -6,6 +6,7 @@ output:
     theme: lumen
     orientation: columns
     vertical_layout: fill
+    source_code: embed
     
 ---
 
