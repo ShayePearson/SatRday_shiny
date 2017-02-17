@@ -4,10 +4,12 @@ install.packages(c("shiny",
                    "ggplot2",
                    "leaflet",
                    "DT",
+                   "tidyr",
                    "devtools"))
 
 devtools::install_github("juliasilge/southafricastats")
 
+install.packages("tidyr")
 
 library(southafricastats)
 
